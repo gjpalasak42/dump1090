@@ -1,4 +1,4 @@
-CFLAGS?=-O2 -g -Wall -W $(shell pkg-config --cflags librtlsdr)
+CFLAGS?=-O2 -g -Wall -W -Wextra -Wpedantic -Wstrict-prototypes -std=c99 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE $(shell pkg-config --cflags librtlsdr)
 LDLIBS+=$(shell pkg-config --libs librtlsdr) -lpthread -lm
 CC?=gcc
 PROGNAME=dump1090

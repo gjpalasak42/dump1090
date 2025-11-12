@@ -46,6 +46,14 @@
 #include "rtl-sdr.h"
 #include "anet.h"
 
+/* Define M_PI if not already defined (for C99/C11 compatibility) */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+/* Global flag for async-signal-safe terminal resize handling */
+static volatile sig_atomic_t g_sigwinch_received = 0;
+
 #define MODES_DEFAULT_RATE         2000000
 #define MODES_DEFAULT_FREQ         1090000000
 #define MODES_DEFAULT_WIDTH        1000
@@ -240,8 +248,8 @@ void useModesMessage(struct modesMessage *mm);
 int fixSingleBitErrors(unsigned char *msg, int bits);
 int fixTwoBitsErrors(unsigned char *msg, int bits);
 int modesMessageLenByType(int type);
-void sigWinchCallback();
-int getTermRows();
+void sigWinchCallback(int sig);
+int getTermRows(void);
 
 /* ============================= Utility functions ========================== */
 
@@ -913,10 +921,6 @@ char *fs_str[8] = {
     /* 5 */ "Special Position Identification. Airborne or Ground",
     /* 6 */ "Value 6 is not assigned",
     /* 7 */ "Value 7 is not assigned"
-};
-
-/* ME message type to description table. */
-char *me_str[] = {
 };
 
 char *getMEDescription(int metype, int mesub) {
@@ -2426,15 +2430,13 @@ void modesWaitReadableClients(int timeout_ms) {
 /* ============================ Terminal handling  ========================== */
 
 /* Handle resizing terminal. */
-void sigWinchCallback() {
-    signal(SIGWINCH, SIG_IGN);
-    Modes.interactive_rows = getTermRows();
-    interactiveShowData();
-    signal(SIGWINCH, sigWinchCallback);
+void sigWinchCallback(int sig) {
+    MODES_NOTUSED(sig);
+    g_sigwinch_received = 1;
 }
 
 /* Get the number of rows after the terminal changes size. */
-int getTermRows() {
+int getTermRows(void) {
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
     return w.ws_row;
@@ -2488,6 +2490,15 @@ void backgroundTasks(void) {
         modesAcceptClients();
         modesReadFromClients();
         interactiveRemoveStaleAircrafts();
+    }
+
+    /* Handle terminal resize in a safe context */
+    if (g_sigwinch_received) {
+        g_sigwinch_received = 0;
+        Modes.interactive_rows = getTermRows();
+        if (Modes.interactive) {
+            interactiveShowData();
+        }
     }
 
     /* Refresh screen when in interactive mode. */
