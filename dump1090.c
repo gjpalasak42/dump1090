@@ -51,6 +51,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/* Global flag for async-signal-safe terminal resize handling */
+static volatile sig_atomic_t g_sigwinch_received = 0;
+
 #define MODES_DEFAULT_RATE         2000000
 #define MODES_DEFAULT_FREQ         1090000000
 #define MODES_DEFAULT_WIDTH        1000
@@ -2429,10 +2432,7 @@ void modesWaitReadableClients(int timeout_ms) {
 /* Handle resizing terminal. */
 void sigWinchCallback(int sig) {
     MODES_NOTUSED(sig);
-    signal(SIGWINCH, SIG_IGN);
-    Modes.interactive_rows = getTermRows();
-    interactiveShowData();
-    signal(SIGWINCH, sigWinchCallback);
+    g_sigwinch_received = 1;
 }
 
 /* Get the number of rows after the terminal changes size. */
@@ -2490,6 +2490,15 @@ void backgroundTasks(void) {
         modesAcceptClients();
         modesReadFromClients();
         interactiveRemoveStaleAircrafts();
+    }
+
+    /* Handle terminal resize in a safe context */
+    if (g_sigwinch_received) {
+        g_sigwinch_received = 0;
+        Modes.interactive_rows = getTermRows();
+        if (Modes.interactive) {
+            interactiveShowData();
+        }
     }
 
     /* Refresh screen when in interactive mode. */
